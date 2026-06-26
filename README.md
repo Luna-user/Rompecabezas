@@ -13,8 +13,8 @@ y NumPy.
 
 1. Deteccion: muestra la MANO ABIERTA (5 dedos) frente a la camara.
 2. Cuenta regresiva: aparece 3, 2, 1. Al llegar a 0 se congela y captura la foto.
-3. Rompecabezas FACIL automatico: al capturar la foto se arma DIRECTAMENTE un
-   rompecabezas de 3x3 (9 piezas). Ya no hay menu de dificultad.
+3. Menu de dificultad por BOTONES (sobre la foto): elige con un clic entre
+   FACIL (3x3 = 9 piezas), MEDIO (4x4 = 16) o DIFICIL (5x5 = 25).
 4. La foto se corta en piezas con forma REAL de rompecabezas (pestanas y huecos
    que encajan entre piezas vecinas), se desordenan y se abre una ventana nueva
    para resolverlo. La ventana incluye una barra superior con: nivel, contador
@@ -31,7 +31,8 @@ de titulo, se sale con ESC o Q.
 
 | Accion                   | Tecla / Boton / Gesto     |
 |--------------------------|---------------------------|
-| Tomar foto (nivel 3x3)   | Mano abierta (5 dedos)    |
+| Tomar foto               | Mano abierta (5 dedos)    |
+| Elegir dificultad        | Boton FACIL / MEDIO / DIFICIL |
 | Seleccionar/Intercambiar | Clic en dos piezas        |
 | Pista (max 3)            | Boton PISTA  o tecla H    |
 | Vista previa (1 solo uso)| Boton VISTA  o tecla P    |

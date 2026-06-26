@@ -7,12 +7,12 @@ Juego de visión artificial que usa la webcam para:
 
 1. Detectar la MANO ABIERTA (5 dedos) e iniciar una cuenta regresiva.
 2. Mostrar el contador (3, 2, 1) y CONGELAR la foto al llegar a 0.
-3. Armar DIRECTAMENTE un rompecabezas de nivel FÁCIL (3x3 = 9 piezas) con la
-    foto capturada, con forma de ROMPECABEZAS REAL (pestañas y huecos que
-    encajan entre piezas vecinas). Las piezas se desordenan y se abre una
-    ventana donde se resuelve intercambiándolas con el mouse (clic en dos
-    piezas). Ayudas limitadas: máx. 3 PISTAS y la VISTA previa es de un
-    solo uso.
+3. Elegir la DIFICULTAD con BOTONES sobre la foto: Fácil (3x3), Medio (4x4)
+    o Difícil (5x5).
+4. Armar el rompecabezas con la foto: piezas con forma de ROMPECABEZAS REAL
+    (pestañas y huecos que encajan), que se desordenan y se resuelven
+    intercambiándolas con el mouse (clic en dos piezas). Ayudas limitadas:
+    máx. 3 PISTAS y la VISTA previa es de un solo uso.
 
 La interfaz es RESPONSIVE: la foto y la ventana del rompecabezas se escalan
 automáticamente para caber en cualquier pantalla, y el HUD (barra superior con
@@ -53,9 +53,12 @@ class Config:
     SEG_POR_NUMERO = 1.0       # duración de cada número de la cuenta regresiva
     HISTORIAL_DEDOS = 7        # nº de lecturas para suavizar el conteo de dedos
 
-    # Único nivel disponible: FÁCIL = rompecabezas de 3x3 (9 piezas).
-    NOMBRE_NIVEL = "FACIL"
-    TAMANO_NIVEL = 3           # cuadrícula 3x3
+    # Niveles de dificultad: (nombre, tamaño de la cuadrícula, color BGR del botón)
+    NIVELES = [
+        ("FACIL",   3, (60, 175, 60)),     # 3x3 = 9  piezas  -> verde
+        ("MEDIO",   4, (0, 170, 255)),     # 4x4 = 16 piezas  -> naranja
+        ("DIFICIL", 5, (70, 70, 205)),     # 5x5 = 25 piezas  -> rojo
+    ]
 
     # Límites de ayudas durante el juego
     MAX_PISTAS = 3             # como máximo 3 pistas
@@ -867,11 +870,76 @@ def dibujar_barra_progreso(frame, fraccion, color=(0, 200, 255)):
 
 
 # =============================================================================
+#  MÓDULO 4B: MENÚ DE DIFICULTAD POR BOTONES (sobre la foto congelada)
+# =============================================================================
+class MenuDificultad:
+    """
+    Menú con tres botones cliqueables (Fácil / Medio / Difícil) dibujados sobre
+    la foto congelada. Al hacer clic en uno, guarda la selección (nombre, n).
+    Trabaja en coordenadas de PANTALLA COMPLETA (igual que se muestra el lienzo).
+    """
+
+    def __init__(self, sw, sh):
+        self.sw, self.sh = sw, sh
+        self.seleccion = None      # (nombre, n) cuando se elige un nivel
+        self.u = max(0.6, min(1.8, sw / 1280.0))
+        u = self.u
+        bw, bh = int(300 * u), int(110 * u)
+        gap = int(40 * u)
+        total = 3 * bw + 2 * gap
+        x0 = (sw - total) // 2
+        y = int(sh * 0.60)
+        self.botones = []
+        for i, (nombre, n, color) in enumerate(Config.NIVELES):
+            x = x0 + i * (bw + gap)
+            self.botones.append((x, y, bw, bh, nombre, n, color))
+
+    def dibujar(self, lienzo):
+        u = self.u
+        fuente = cv2.FONT_HERSHEY_SIMPLEX
+
+        # Velo oscuro para que resalten los botones
+        capa = lienzo.copy()
+        cv2.rectangle(capa, (0, 0), (self.sw, self.sh), (0, 0, 0), -1)
+        cv2.addWeighted(capa, 0.35, lienzo, 0.65, 0, lienzo)
+
+        # Título
+        titulo = "ELIGE LA DIFICULTAD"
+        esc = 1.4 * u
+        (tw, th), _ = cv2.getTextSize(titulo, fuente, esc, 3)
+        cv2.putText(lienzo, titulo, ((self.sw - tw) // 2, int(self.sh * 0.40)),
+                    fuente, esc, (0, 255, 255), max(2, int(3 * u)), cv2.LINE_AA)
+
+        # Botones
+        for (x, y, bw, bh, nombre, n, color) in self.botones:
+            cv2.rectangle(lienzo, (x, y), (x + bw, y + bh), color, -1)
+            cv2.rectangle(lienzo, (x, y), (x + bw, y + bh), (255, 255, 255),
+                          max(2, int(2 * u)))
+            (lw, lh), _ = cv2.getTextSize(nombre, fuente, 1.1 * u, 2)
+            cv2.putText(lienzo, nombre, (x + (bw - lw) // 2, y + int(bh * 0.46)),
+                        fuente, 1.1 * u, (255, 255, 255), max(2, int(2 * u)), cv2.LINE_AA)
+            sub = f"{n}x{n}"
+            (sw2, sh2), _ = cv2.getTextSize(sub, fuente, 0.85 * u, 2)
+            cv2.putText(lienzo, sub, (x + (bw - sw2) // 2, y + int(bh * 0.80)),
+                        fuente, 0.85 * u, (235, 235, 235), max(1, int(2 * u)), cv2.LINE_AA)
+
+    def on_mouse(self, evento, x, y, flags, params):
+        """Callback de OpenCV: detecta el clic sobre un botón de dificultad."""
+        if evento != cv2.EVENT_LBUTTONDOWN:
+            return
+        for (bx, by, bw, bh, nombre, n, color) in self.botones:
+            if bx <= x <= bx + bw and by <= y <= by + bh:
+                self.seleccion = (nombre, n)
+                return
+
+
+# =============================================================================
 #  MÓDULO 5: MÁQUINA DE ESTADOS PRINCIPAL
 # =============================================================================
 # Estados posibles del juego
 ESTADO_DETECCION = "DETECCION"          # esperando la mano abierta
-ESTADO_CUENTA = "CUENTA_REGRESIVA"      # mostrando 3, 2, 1 y luego a jugar
+ESTADO_CUENTA = "CUENTA_REGRESIVA"      # mostrando 3, 2, 1
+ESTADO_MENU = "MENU"                    # eligiendo dificultad con botones
 
 
 def main():
@@ -879,7 +947,7 @@ def main():
     print(" ROMPECABEZAS FOTOGRAFICO POR GESTOS")
     print("=" * 60)
     print(" - Muestra la MANO ABIERTA (5 dedos) para tomar la foto.")
-    print(" - Se arma directamente un rompecabezas FACIL de 3x3.")
+    print(" - Luego elige la dificultad con los botones: FACIL / MEDIO / DIFICIL.")
     print(" - Pulsa ESC o Q en cualquier momento para salir.")
     print("=" * 60)
 
@@ -902,6 +970,7 @@ def main():
     estado = ESTADO_DETECCION
     t_inicio_cuenta = 0.0      # marca de tiempo del inicio de la cuenta regresiva
     foto_congelada = None      # fotograma capturado para el rompecabezas
+    menu = None                # menú de dificultad por botones (se crea tras la foto)
     ventana_video = "Camara - Rompecabezas por gestos"
 
     # Ventana de cámara en PANTALLA COMPLETA
@@ -957,27 +1026,41 @@ def main():
                 texto_centrado_horizontal(
                     frame, "Preparate para la foto...", 60, 1.0, (0, 255, 0))
             else:
-                # ¡Tiempo! Congelamos el fotograma y armamos DIRECTAMENTE el
-                # rompecabezas FÁCIL (3x3): ya no hay menú de dificultad.
+                # ¡Tiempo! Congelamos el fotograma y pasamos al MENÚ de
+                # dificultad (se elige con botones: Fácil / Medio / Difícil).
                 foto_congelada = frame.copy()
                 suavizador.reiniciar()
-                print(f"[FOTO] Imagen capturada. Iniciando rompecabezas "
-                      f"{Config.NOMBRE_NIVEL} ({Config.TAMANO_NIVEL}x"
-                      f"{Config.TAMANO_NIVEL}).")
+                menu = MenuDificultad(pantalla[0], pantalla[1])
+                cv2.setMouseCallback(ventana_video, menu.on_mouse)
+                estado = ESTADO_MENU
+                print("[FOTO] Imagen capturada. Elige la dificultad (botones).")
+                continue
 
-                # Cerramos la ventana de video y lanzamos el rompecabezas
+        # =================================================================
+        #  ESTADO 3: MENÚ DE DIFICULTAD (botones sobre la foto congelada)
+        # =================================================================
+        elif estado == ESTADO_MENU:
+            lienzo = componer_pantalla(foto_congelada, pantalla[0], pantalla[1])
+            menu.dibujar(lienzo)
+            cv2.imshow(ventana_video, lienzo)
+            tecla = cv2.waitKey(5) & 0xFF
+            if tecla in (27, ord('q')):
+                break
+
+            if menu.seleccion is not None:
+                nombre, n = menu.seleccion
+                print(f"[MENU] Dificultad elegida: {nombre} ({n}x{n}).")
                 cv2.destroyWindow(ventana_video)
-                puzzle = Rompecabezas(foto_congelada, Config.TAMANO_NIVEL,
-                                      Config.NOMBRE_NIVEL, pantalla)
+                puzzle = Rompecabezas(foto_congelada, n, nombre, pantalla)
                 puzzle.jugar()
 
                 # Al terminar, reiniciamos el flujo para una nueva partida
                 estado = ESTADO_DETECCION
                 foto_congelada = None
+                menu = None
                 suavizador.reiniciar()
-                # Recreamos la ventana de cámara (pantalla completa) para seguir
                 preparar_ventana_pantalla_completa(ventana_video)
-                continue
+            continue
 
         # --- Mostrar la ventana de video (compuesta a pantalla completa) ---
         cv2.imshow(ventana_video, componer_pantalla(frame, pantalla[0], pantalla[1]))
