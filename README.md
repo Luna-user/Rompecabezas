@@ -21,10 +21,11 @@ y NumPy.
    de movimientos, cronometro, pistas usadas (max 3), barra de progreso (% de
    piezas en su lugar) y botones cliqueables.
 
-La interfaz es RESPONSIVE: detecta el tamano de la pantalla y reescala la foto
-y la ventana del rompecabezas para que siempre quepan, ajustando de forma
-proporcional las fuentes, los botones y los margenes del HUD. La ventana de la
-camara tambien se puede redimensionar.
+La interfaz va en PANTALLA COMPLETA en todas las vistas (camara y rompecabezas)
+y es RESPONSIVE: detecta la resolucion del monitor y dibuja cada vista al tamano
+exacto de la pantalla, con la imagen centrada y el HUD a todo el ancho,
+ajustando de forma proporcional fuentes, botones y margenes. Como no hay barra
+de titulo, se sale con ESC o Q.
 
 ## Controles (ventana del rompecabezas)
 

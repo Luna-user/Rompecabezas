@@ -53,11 +53,6 @@ class Config:
     SEG_POR_NUMERO = 1.0       # duración de cada número de la cuenta regresiva
     HISTORIAL_DEDOS = 7        # nº de lecturas para suavizar el conteo de dedos
 
-    # Fracción de la pantalla que pueden ocupar las ventanas (deja margen para
-    # la barra de título y el borde de la ventana).
-    FRAC_PANTALLA_W = 0.96
-    FRAC_PANTALLA_H = 0.92
-
     # Único nivel disponible: FÁCIL = rompecabezas de 3x3 (9 piezas).
     NOMBRE_NIVEL = "FACIL"
     TAMANO_NIVEL = 3           # cuadrícula 3x3
@@ -105,10 +100,28 @@ def obtener_tamano_pantalla():
     return 1280, 720
 
 
-def preparar_ventana_redimensionable(nombre, sw, sh, frac=0.9):
-    """Crea una ventana que se puede redimensionar y la ajusta a la pantalla."""
-    cv2.namedWindow(nombre, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-    cv2.resizeWindow(nombre, int(sw * frac), int(sh * frac))
+def preparar_ventana_pantalla_completa(nombre):
+    """Crea/configura una ventana en PANTALLA COMPLETA (cubre todo el monitor)."""
+    cv2.namedWindow(nombre, cv2.WINDOW_NORMAL)
+    cv2.setWindowProperty(nombre, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+
+def componer_pantalla(frame, sw, sh, fondo=(0, 0, 0)):
+    """
+    Centra y escala 'frame' dentro de un lienzo del tamaño EXACTO de la pantalla
+    (sh x sw), conservando la proporción (rellena con 'fondo' las barras que
+    sobren). Así cada vista llena toda la pantalla sin deformarse, en cualquier
+    monitor.
+    """
+    h, w = frame.shape[:2]
+    escala = min(sw / w, sh / h)
+    nw, nh = max(1, int(w * escala)), max(1, int(h * escala))
+    interp = cv2.INTER_AREA if escala < 1 else cv2.INTER_LINEAR
+    redim = cv2.resize(frame, (nw, nh), interpolation=interp)
+    lienzo = np.full((sh, sw, 3), fondo, np.uint8)
+    x0, y0 = (sw - nw) // 2, (sh - nh) // 2
+    lienzo[y0:y0 + nh, x0:x0 + nw] = redim
+    return lienzo
 
 
 # =============================================================================
@@ -264,20 +277,22 @@ class Rompecabezas:
         self.nombre = nombre_dificultad
 
         # ------------------------------------------------------------------
-        # 1) RESPONSIVE: reescalamos la foto para que el tablero + el HUD
-        #    quepan dentro de la pantalla, conservando la proporción.
+        # 1) PANTALLA COMPLETA + RESPONSIVE: el lienzo final es del tamaño
+        #    EXACTO de la pantalla. La foto se reescala para ocupar el área
+        #    bajo el HUD conservando su proporción, y se CENTRA (el resto se
+        #    rellena de fondo oscuro). Así cubre cualquier monitor sin deformar.
         # ------------------------------------------------------------------
         sw, sh = pantalla if pantalla else obtener_tamano_pantalla()
-        disp_w = int(sw * Config.FRAC_PANTALLA_W)
-        disp_h = int(sh * Config.FRAC_PANTALLA_H)
+        self.pantalla_w, self.pantalla_h = sw, sh
 
         orig_h, orig_w = imagen.shape[:2]
-        # Escala tentativa (sin contar el HUD) para estimar su altura
-        s0 = min(disp_w / orig_w, disp_h / orig_h, 2.0)
-        u0 = max(0.6, min(1.6, (orig_w * s0) / 1280.0))
+        # Altura del HUD proporcional al ancho de la pantalla
+        u0 = max(0.6, min(1.8, sw / 1280.0))
         self.hud_h = int(84 * u0)
-        # Escala final, ya descontando la altura del HUD
-        escala = min(disp_w / orig_w, (disp_h - self.hud_h) / orig_h, 2.0)
+
+        # La foto se ajusta al área disponible (toda la pantalla menos el HUD)
+        area_w, area_h = sw, sh - self.hud_h
+        escala = min(area_w / orig_w, area_h / orig_h)
         nuevo_w = max(n * 40, int(orig_w * escala))
         nuevo_h = max(n * 40, int(orig_h * escala))
         if (nuevo_w, nuevo_h) != (orig_w, orig_h):
@@ -290,8 +305,12 @@ class Rompecabezas:
         self.ancho = ancho - (ancho % n)
         self.imagen = imagen[:self.alto, :self.ancho].copy()
 
+        # Posición del tablero, centrado dentro del lienzo de pantalla completa
+        self.off_x = (sw - self.ancho) // 2
+        self.off_y = self.hud_h + (sh - self.hud_h - self.alto) // 2
+
         # Factor de escala de la INTERFAZ (fuentes/botones) respecto a 1280 px
-        self.u = max(0.6, min(1.6, self.ancho / 1280.0))
+        self.u = max(0.6, min(1.8, self.ancho / 1280.0))
 
         # Tamaño de cada celda de la cuadrícula
         self.alto_pieza = self.alto // n
@@ -316,12 +335,12 @@ class Rompecabezas:
         self.orden = list(range(n * n))
         self._desordenar()
 
-        # 4) Barra superior (HUD) con estadísticas y botones cliqueables
+        # 4) Barra superior (HUD) a lo ANCHO de toda la pantalla
         u = self.u
         bw, bh = int(176 * u), int(50 * u)
         by = (self.hud_h - bh) // 2
         gap = int(12 * u)
-        x_rein = self.ancho - gap - bw
+        x_rein = self.pantalla_w - gap - bw
         x_vista = x_rein - gap - bw
         x_pista = x_vista - gap - bw
         self.btn_pista = (x_pista, by, bw, bh)
@@ -493,8 +512,11 @@ class Rompecabezas:
     def render(self):
         """Construye el fotograma completo: barra superior (HUD) + tablero."""
         m = self.margen
-        canvas = np.zeros((self.hud_h + self.alto, self.ancho, 3), np.uint8)
-        tablero = canvas[self.hud_h:, :]          # vista del área de juego
+        # Lienzo del tamaño EXACTO de la pantalla (fondo oscuro en los bordes)
+        canvas = np.full((self.pantalla_h, self.pantalla_w, 3), 18, np.uint8)
+        # Vista del tablero, centrado dentro del lienzo
+        tablero = canvas[self.off_y:self.off_y + self.alto,
+                         self.off_x:self.off_x + self.ancho]
         tablero[:] = self.fondo                   # fondo ambiental
 
         desfase = max(3, int(6 * self.u))         # desplazamiento de la sombra
@@ -575,8 +597,8 @@ class Rompecabezas:
         """Dibuja la barra superior: dificultad, stats, progreso y botones."""
         fuente = cv2.FONT_HERSHEY_SIMPLEX
         u, H = self.u, self.hud_h
-        cv2.rectangle(canvas, (0, 0), (self.ancho, H), (38, 38, 44), -1)
-        cv2.line(canvas, (0, H), (self.ancho, H), (0, 0, 0), 2)
+        cv2.rectangle(canvas, (0, 0), (self.pantalla_w, H), (38, 38, 44), -1)
+        cv2.line(canvas, (0, H), (self.pantalla_w, H), (0, 0, 0), 2)
 
         # Izquierda: dificultad + contadores
         cv2.putText(canvas, f"{self.nombre}  {self.n}x{self.n}",
@@ -590,7 +612,7 @@ class Rompecabezas:
 
         # Centro: barra de progreso (% de piezas en su lugar)
         prog = self.progreso()
-        bx0 = int(self.ancho * 0.40)
+        bx0 = int(self.pantalla_w * 0.40)
         bx1 = self.btn_pista[0] - int(20 * u)
         if bx1 > bx0 + 40:
             byc = int(H * 0.46)
@@ -719,9 +741,12 @@ class Rompecabezas:
         if self.resuelto:
             return
 
-        # Coordenadas dentro del tablero (descontando la altura del HUD)
-        col = x // self.ancho_pieza
-        fila = (y - self.hud_h) // self.alto_pieza
+        # Coordenadas dentro del tablero (descontando el desfase de centrado)
+        xb, yb = x - self.off_x, y - self.off_y
+        if xb < 0 or yb < 0:
+            return
+        col = xb // self.ancho_pieza
+        fila = yb // self.alto_pieza
         if col < 0 or fila < 0 or col >= self.n or fila >= self.n:
             return
         celda = fila * self.n + col
@@ -793,8 +818,8 @@ class Rompecabezas:
 
     # ----- Bucle del juego -----
     def jugar(self):
-        """Abre la ventana del rompecabezas y gestiona el juego."""
-        cv2.namedWindow(self.nombre_ventana, cv2.WINDOW_AUTOSIZE)
+        """Abre la ventana del rompecabezas (PANTALLA COMPLETA) y gestiona el juego."""
+        preparar_ventana_pantalla_completa(self.nombre_ventana)
         cv2.setMouseCallback(self.nombre_ventana, self.on_mouse)
 
         print(f"\n[JUEGO] Dificultad {self.nombre} ({self.n}x{self.n} = "
@@ -879,8 +904,8 @@ def main():
     foto_congelada = None      # fotograma capturado para el rompecabezas
     ventana_video = "Camara - Rompecabezas por gestos"
 
-    # Ventana de cámara responsive (redimensionable y ajustada a la pantalla)
-    preparar_ventana_redimensionable(ventana_video, pantalla[0], pantalla[1])
+    # Ventana de cámara en PANTALLA COMPLETA
+    preparar_ventana_pantalla_completa(ventana_video)
 
     while True:
         ok, frame = captura.read()
@@ -950,13 +975,12 @@ def main():
                 estado = ESTADO_DETECCION
                 foto_congelada = None
                 suavizador.reiniciar()
-                # Recreamos la ventana de cámara (responsive) para seguir
-                preparar_ventana_redimensionable(
-                    ventana_video, pantalla[0], pantalla[1])
+                # Recreamos la ventana de cámara (pantalla completa) para seguir
+                preparar_ventana_pantalla_completa(ventana_video)
                 continue
 
-        # --- Mostrar la ventana de video ---
-        cv2.imshow(ventana_video, frame)
+        # --- Mostrar la ventana de video (compuesta a pantalla completa) ---
+        cv2.imshow(ventana_video, componer_pantalla(frame, pantalla[0], pantalla[1]))
         tecla = cv2.waitKey(5) & 0xFF
         if tecla in (27, ord('q')):
             break
