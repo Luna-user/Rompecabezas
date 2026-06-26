@@ -7,15 +7,12 @@ Juego de visión artificial que usa la webcam para:
 
 1. Detectar la MANO ABIERTA (5 dedos) e iniciar una cuenta regresiva.
 2. Mostrar el contador (3, 2, 1) y CONGELAR la foto al llegar a 0.
-3. Mostrar un menú de dificultad por gestos sobre la foto congelada:
-        1 dedo  -> Fácil   (3x3  =  9 piezas)
-        2 dedos -> Medio   (4x4  = 16 piezas)
-        3 dedos -> Difícil (5x5  = 25 piezas)
-    La selección se confirma manteniendo el gesto durante 1 segundo.
-4. Recortar la foto en piezas con forma de ROMPECABEZAS REAL (pestañas y
-    huecos que encajan entre piezas vecinas), desordenarlas y abrir una nueva
-    ventana donde se resuelve intercambiando piezas con el mouse (clic en dos
-    piezas para intercambiarlas).
+3. Armar DIRECTAMENTE un rompecabezas de nivel FÁCIL (3x3 = 9 piezas) con la
+    foto capturada, con forma de ROMPECABEZAS REAL (pestañas y huecos que
+    encajan entre piezas vecinas). Las piezas se desordenan y se abre una
+    ventana donde se resuelve intercambiándolas con el mouse (clic en dos
+    piezas). Ayudas limitadas: máx. 3 PISTAS y la VISTA previa es de un
+    solo uso.
 
 La interfaz es RESPONSIVE: la foto y la ventana del rompecabezas se escalan
 automáticamente para caber en cualquier pantalla, y el HUD (barra superior con
@@ -54,7 +51,6 @@ class Config:
     ALTO_CAMARA = 720
 
     SEG_POR_NUMERO = 1.0       # duración de cada número de la cuenta regresiva
-    SEG_CONFIRMACION = 1.0     # tiempo que hay que sostener el gesto en el menú
     HISTORIAL_DEDOS = 7        # nº de lecturas para suavizar el conteo de dedos
 
     # Fracción de la pantalla que pueden ocupar las ventanas (deja margen para
@@ -62,12 +58,13 @@ class Config:
     FRAC_PANTALLA_W = 0.96
     FRAC_PANTALLA_H = 0.92
 
-    # Mapeo de dificultad: nº de dedos -> (nombre, tamaño de la cuadrícula)
-    DIFICULTADES = {
-        1: ("FACIL",   3),     # 3x3 =  9 piezas
-        2: ("MEDIO",   4),     # 4x4 = 16 piezas
-        3: ("DIFICIL", 5),     # 5x5 = 25 piezas
-    }
+    # Único nivel disponible: FÁCIL = rompecabezas de 3x3 (9 piezas).
+    NOMBRE_NIVEL = "FACIL"
+    TAMANO_NIVEL = 3           # cuadrícula 3x3
+
+    # Límites de ayudas durante el juego
+    MAX_PISTAS = 3             # como máximo 3 pistas
+    VISTA_UN_SOLO_USO = True   # la vista previa solo se puede usar una vez
 
 
 # =============================================================================
@@ -336,9 +333,11 @@ class Rompecabezas:
         self.resuelto = False
         self.movimientos = 0            # contador de intercambios
         self.pistas_usadas = 0          # cuántas pistas pidió el jugador
+        self.max_pistas = Config.MAX_PISTAS         # límite de pistas (3)
         self.t_inicio = None            # el cronómetro arranca con el 1er clic
         self.t_fin = None
         self.mostrar_preview = False    # vista previa de la referencia
+        self.vista_disponible = True    # la vista previa es de UN SOLO uso
         self.pista_par = None           # (origen, destino) a resaltar
         self.pista_hasta = 0.0          # instante hasta el que se ve la pista
         self.nombre_ventana = "Rompecabezas - resuelvelo!"
@@ -585,7 +584,7 @@ class Rompecabezas:
                     (0, 255, 255), max(1, int(2 * u)), cv2.LINE_AA)
         info = (f"Mov: {self.movimientos}    "
                 f"Tiempo: {self._fmt_tiempo(self._tiempo_actual())}    "
-                f"Pistas: {self.pistas_usadas}")
+                f"Pistas: {self.pistas_usadas}/{self.max_pistas}")
         cv2.putText(canvas, info, (int(16 * u), int(H * 0.82)), fuente,
                     0.58 * u, (230, 230, 230), 1, cv2.LINE_AA)
 
@@ -606,8 +605,18 @@ class Rompecabezas:
             cv2.rectangle(canvas, (bx0, byc), (bx1, byc + bh2), (200, 200, 200), 1)
 
         # Derecha: botones cliqueables
-        self._dibujar_boton(canvas, self.btn_pista, "PISTA (H)", (60, 140, 240))
-        col_vista = (60, 175, 60) if self.mostrar_preview else (95, 95, 95)
+        # PISTA: muestra cuántas quedan; se apaga (gris) al agotarse.
+        pistas_rest = self.max_pistas - self.pistas_usadas
+        col_pista = (60, 140, 240) if pistas_rest > 0 else (70, 70, 70)
+        self._dibujar_boton(canvas, self.btn_pista, f"PISTA ({pistas_rest})", col_pista)
+        # VISTA: de un solo uso. Verde si está activa, gris si disponible,
+        # apagada si ya se gastó.
+        if self.mostrar_preview:
+            col_vista = (60, 175, 60)
+        elif self.vista_disponible:
+            col_vista = (95, 95, 95)
+        else:
+            col_vista = (70, 70, 70)
         self._dibujar_boton(canvas, self.btn_vista, "VISTA (P)", col_vista)
         self._dibujar_boton(canvas, self.btn_reiniciar, "REINICIAR (R)", (70, 70, 205))
 
@@ -702,7 +711,7 @@ class Rompecabezas:
             if self._en_rect(x, y, self.btn_pista):
                 self.pedir_pista()
             elif self._en_rect(x, y, self.btn_vista):
-                self.mostrar_preview = not self.mostrar_preview
+                self.alternar_vista()
             elif self._en_rect(x, y, self.btn_reiniciar):
                 self.reiniciar()
             return
@@ -739,10 +748,13 @@ class Rompecabezas:
             if self.t_fin is None:
                 self.t_fin = time.time()
 
-    # ----- Pista -----
+    # ----- Pista (máximo Config.MAX_PISTAS) -----
     def pedir_pista(self):
-        """Elige una pieza mal colocada y marca de dónde a dónde moverla."""
-        if self.resuelto:
+        """Elige una pieza mal colocada y marca de dónde a dónde moverla.
+
+        Está LIMITADA: si ya se usaron todas las pistas permitidas, no hace nada.
+        """
+        if self.resuelto or self.pistas_usadas >= self.max_pistas:
             return
         mal = [c for c, idp in enumerate(self.orden) if c != idp]
         if not mal:
@@ -755,9 +767,19 @@ class Rompecabezas:
         if self.t_inicio is None:
             self.t_inicio = time.time()
 
+    # ----- Vista previa (UN SOLO uso) -----
+    def alternar_vista(self):
+        """Muestra/oculta la referencia. Es de un solo uso: una vez que se
+        oculta (o se agota), ya no se puede volver a mostrar."""
+        if self.mostrar_preview:
+            self.mostrar_preview = False        # ocultar -> se acaba el uso
+        elif self.vista_disponible:
+            self.mostrar_preview = True
+            self.vista_disponible = False       # se consume el único uso
+
     # ----- Reinicio -----
     def reiniciar(self):
-        """Vuelve a desordenar y pone los contadores a cero."""
+        """Vuelve a desordenar y pone los contadores y las ayudas a cero."""
         self.resuelto = False
         self.seleccionada = None
         self.movimientos = 0
@@ -765,6 +787,8 @@ class Rompecabezas:
         self.t_inicio = None
         self.t_fin = None
         self.pista_par = None
+        self.mostrar_preview = False
+        self.vista_disponible = True
         self._desordenar()
 
     # ----- Bucle del juego -----
@@ -786,10 +810,10 @@ class Rompecabezas:
                 break
             elif tecla == ord('r'):               # R -> reiniciar partida
                 self.reiniciar()
-            elif tecla == ord('h'):               # H -> pista
+            elif tecla == ord('h'):               # H -> pista (máx. 3)
                 self.pedir_pista()
-            elif tecla == ord('p'):               # P -> vista previa on/off
-                self.mostrar_preview = not self.mostrar_preview
+            elif tecla == ord('p'):               # P -> vista previa (un solo uso)
+                self.alternar_vista()
 
         cv2.destroyWindow(self.nombre_ventana)
 
@@ -822,17 +846,15 @@ def dibujar_barra_progreso(frame, fraccion, color=(0, 200, 255)):
 # =============================================================================
 # Estados posibles del juego
 ESTADO_DETECCION = "DETECCION"          # esperando la mano abierta
-ESTADO_CUENTA = "CUENTA_REGRESIVA"      # mostrando 3, 2, 1
-ESTADO_MENU = "MENU"                    # eligiendo dificultad sobre la foto
-ESTADO_JUEGO = "JUEGO"                  # jugando el rompecabezas
+ESTADO_CUENTA = "CUENTA_REGRESIVA"      # mostrando 3, 2, 1 y luego a jugar
 
 
 def main():
     print("=" * 60)
     print(" ROMPECABEZAS FOTOGRAFICO POR GESTOS")
     print("=" * 60)
-    print(" - Muestra la MANO ABIERTA (5 dedos) para empezar.")
-    print(" - Tras la foto, elige dificultad con 1, 2 o 3 dedos.")
+    print(" - Muestra la MANO ABIERTA (5 dedos) para tomar la foto.")
+    print(" - Se arma directamente un rompecabezas FACIL de 3x3.")
     print(" - Pulsa ESC o Q en cualquier momento para salir.")
     print("=" * 60)
 
@@ -855,8 +877,6 @@ def main():
     estado = ESTADO_DETECCION
     t_inicio_cuenta = 0.0      # marca de tiempo del inicio de la cuenta regresiva
     foto_congelada = None      # fotograma capturado para el rompecabezas
-    opcion_actual = None       # dificultad que se está sosteniendo en el menú
-    t_inicio_confirmacion = 0.0
     ventana_video = "Camara - Rompecabezas por gestos"
 
     # Ventana de cámara responsive (redimensionable y ajustada a la pantalla)
@@ -912,76 +932,28 @@ def main():
                 texto_centrado_horizontal(
                     frame, "Preparate para la foto...", 60, 1.0, (0, 255, 0))
             else:
-                # ¡Tiempo! Congelamos este fotograma (sin las marcas de la mano)
+                # ¡Tiempo! Congelamos el fotograma y armamos DIRECTAMENTE el
+                # rompecabezas FÁCIL (3x3): ya no hay menú de dificultad.
                 foto_congelada = frame.copy()
-                estado = ESTADO_MENU
-                opcion_actual = None
                 suavizador.reiniciar()
-                print("[FOTO] Imagen capturada. Elige la dificultad.")
+                print(f"[FOTO] Imagen capturada. Iniciando rompecabezas "
+                      f"{Config.NOMBRE_NIVEL} ({Config.TAMANO_NIVEL}x"
+                      f"{Config.TAMANO_NIVEL}).")
 
-        # =================================================================
-        #  ESTADO 3: MENÚ DE DIFICULTAD (sobre la foto congelada)
-        # =================================================================
-        elif estado == ESTADO_MENU:
-            # Trabajamos sobre una copia de la foto congelada
-            frame = foto_congelada.copy()
+                # Cerramos la ventana de video y lanzamos el rompecabezas
+                cv2.destroyWindow(ventana_video)
+                puzzle = Rompecabezas(foto_congelada, Config.TAMANO_NIVEL,
+                                      Config.NOMBRE_NIVEL, pantalla)
+                puzzle.jugar()
 
-            # Panel semitransparente para el menú
-            overlay = frame.copy()
-            cv2.rectangle(overlay, (0, 0), (frame.shape[1], 230), (0, 0, 0), -1)
-            cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
-
-            texto_centrado_horizontal(
-                frame, "ELIGE LA DIFICULTAD CON TUS DEDOS", 50, 1.0,
-                (0, 255, 255), fondo=False)
-            cv2.putText(frame, "1 dedo  -> FACIL   (3x3)", (80, 110),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(frame, "2 dedos -> MEDIO   (4x4)", (80, 155),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(frame, "3 dedos -> DIFICIL (5x5)", (80, 200),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
-
-            # ¿El gesto actual es una opción válida (1, 2 o 3)?
-            if dedos_estable in Config.DIFICULTADES:
-                if dedos_estable != opcion_actual:
-                    # Cambió la opción -> reiniciamos el cronómetro de confirmación
-                    opcion_actual = dedos_estable
-                    t_inicio_confirmacion = time.time()
-
-                nombre, _ = Config.DIFICULTADES[opcion_actual]
-                transcurrido = time.time() - t_inicio_confirmacion
-                fraccion = transcurrido / Config.SEG_CONFIRMACION
-
-                texto_centrado_horizontal(
-                    frame, f"Seleccionando: {nombre}  (manten {Config.SEG_CONFIRMACION:.0f}s)",
-                    frame.shape[0] - 70, 0.9, (0, 255, 0))
-                dibujar_barra_progreso(frame, fraccion)
-
-                # Confirmado: se sostuvo el gesto el tiempo necesario
-                if transcurrido >= Config.SEG_CONFIRMACION:
-                    nombre, n = Config.DIFICULTADES[opcion_actual]
-                    print(f"[MENU] Dificultad confirmada: {nombre} ({n}x{n}).")
-
-                    # Cerramos la ventana de video y lanzamos el rompecabezas
-                    cv2.destroyWindow(ventana_video)
-                    puzzle = Rompecabezas(foto_congelada, n, nombre, pantalla)
-                    puzzle.jugar()
-
-                    # Al terminar, reiniciamos el flujo para una nueva partida
-                    estado = ESTADO_DETECCION
-                    foto_congelada = None
-                    opcion_actual = None
-                    suavizador.reiniciar()
-                    # Recreamos la ventana de cámara (responsive) para seguir
-                    preparar_ventana_redimensionable(
-                        ventana_video, pantalla[0], pantalla[1])
-                    continue
-            else:
-                # Sin gesto válido -> reiniciamos la selección
-                opcion_actual = None
-                texto_centrado_horizontal(
-                    frame, "Muestra 1, 2 o 3 dedos...", frame.shape[0] - 70,
-                    0.9, (200, 200, 200))
+                # Al terminar, reiniciamos el flujo para una nueva partida
+                estado = ESTADO_DETECCION
+                foto_congelada = None
+                suavizador.reiniciar()
+                # Recreamos la ventana de cámara (responsive) para seguir
+                preparar_ventana_redimensionable(
+                    ventana_video, pantalla[0], pantalla[1])
+                continue
 
         # --- Mostrar la ventana de video ---
         cv2.imshow(ventana_video, frame)
@@ -992,7 +964,6 @@ def main():
             # Reiniciar manualmente el flujo en cualquier momento
             estado = ESTADO_DETECCION
             foto_congelada = None
-            opcion_actual = None
             suavizador.reiniciar()
 
     # --- Limpieza de recursos ---

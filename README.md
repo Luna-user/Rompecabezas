@@ -13,17 +13,13 @@ y NumPy.
 
 1. Deteccion: muestra la MANO ABIERTA (5 dedos) frente a la camara.
 2. Cuenta regresiva: aparece 3, 2, 1. Al llegar a 0 se congela y captura la foto.
-3. Menu por gestos (sobre la foto congelada):
-   - 1 dedo  -> Facil   3x3 (9 piezas)
-   - 2 dedos -> Medio   4x4 (16 piezas)
-   - 3 dedos -> Dificil 5x5 (25 piezas)
-
-   Manten el gesto 1 segundo para confirmar (hay una barra de progreso).
-4. Rompecabezas: la foto se corta en piezas con forma REAL de rompecabezas
-   (pestanas y huecos que encajan entre piezas vecinas), se desordenan y se
-   abre una ventana nueva para resolverlo. La ventana incluye una barra
-   superior con: dificultad, contador de movimientos, cronometro, pistas
-   usadas, barra de progreso (% de piezas en su lugar) y botones cliqueables.
+3. Rompecabezas FACIL automatico: al capturar la foto se arma DIRECTAMENTE un
+   rompecabezas de 3x3 (9 piezas). Ya no hay menu de dificultad.
+4. La foto se corta en piezas con forma REAL de rompecabezas (pestanas y huecos
+   que encajan entre piezas vecinas), se desordenan y se abre una ventana nueva
+   para resolverlo. La ventana incluye una barra superior con: nivel, contador
+   de movimientos, cronometro, pistas usadas (max 3), barra de progreso (% de
+   piezas en su lugar) y botones cliqueables.
 
 La interfaz es RESPONSIVE: detecta el tamano de la pantalla y reescala la foto
 y la ventana del rompecabezas para que siempre quepan, ajustando de forma
@@ -34,17 +30,18 @@ camara tambien se puede redimensionar.
 
 | Accion                   | Tecla / Boton / Gesto     |
 |--------------------------|---------------------------|
-| Iniciar foto             | Mano abierta (5 dedos)    |
-| Elegir dificultad        | 1, 2 o 3 dedos (1 s)      |
+| Tomar foto (nivel 3x3)   | Mano abierta (5 dedos)    |
 | Seleccionar/Intercambiar | Clic en dos piezas        |
-| Pista (que pieza mover)  | Boton PISTA  o tecla H    |
-| Vista previa (referencia)| Boton VISTA  o tecla P    |
+| Pista (max 3)            | Boton PISTA  o tecla H    |
+| Vista previa (1 solo uso)| Boton VISTA  o tecla P    |
 | Reiniciar la partida     | Boton REINICIAR o tecla R |
 | Salir                    | ESC o Q                   |
 
 La PISTA resalta en naranja la pieza a mover y en verde su lugar correcto, con
-una flecha entre ambas (se cuenta cuantas usaste). La VISTA muestra/oculta una
-miniatura de la foto original como referencia.
+una flecha entre ambas. Esta LIMITADA a 3 usos (el boton muestra cuantas
+quedan). La VISTA muestra una miniatura de la foto original como referencia y es
+de UN SOLO uso (una vez que la ocultas, ya no se puede volver a mostrar). Al
+Reiniciar la partida, las ayudas se restablecen.
 
 ## Como ejecutar
 
