@@ -3,10 +3,17 @@
 //  Cámara + gestos con MediaPipe Tasks for Web; rompecabezas dibujado en canvas.
 //  Todo corre en el navegador del visitante (ideal para desplegar en Vercel).
 // =============================================================================
-import {
-  HandLandmarker,
-  FilesetResolver,
-} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+// MediaPipe Tasks for Web se carga de forma DINÁMICA dentro de iniciar() para
+// que, si el CDN falla, se pueda mostrar un mensaje en vez de romper todo el
+// script (un error en un import estático dejaría el botón "Iniciar" sin efecto).
+const MEDIAPIPE_URL =
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+const MEDIAPIPE_WASM =
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+const MODELO_MANOS =
+  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+let HandLandmarker = null;
+let FilesetResolver = null;
 
 // ---------- Referencias al DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -21,6 +28,15 @@ const actions = $("actions");
 const difBtns = $("difBtns");
 const btnCapturar = $("btnCapturar");
 
+// Cualquier error inesperado se muestra en la pantalla inicial (útil en producción)
+window.addEventListener("error", (e) => mostrarError(e.message));
+window.addEventListener("unhandledrejection", (e) =>
+  mostrarError((e.reason && e.reason.message) || e.reason));
+function mostrarError(msg) {
+  if (startMsg && !startScreen.classList.contains("hidden")) startMsg.textContent = "⚠️ " + msg;
+  console.error("[Rompecabezas]", msg);
+}
+
 // ---------- Configuración ----------
 const DIFICULTADES = { 1: ["FACIL", 3], 2: ["MEDIO", 4], 3: ["DIFICIL", 5] };
 const SEG_CONFIRM = 1.0;     // segundos para confirmar la dificultad
@@ -29,7 +45,7 @@ const CUENTA_TOTAL = 3.0;    // segundos de cuenta regresiva
 // ---------- Estado global ----------
 let state = "START";
 let handLandmarker = null;
-let smoother = new Smoother(7);
+let smoother = null;            // se crea en iniciar() (la clase se define más abajo)
 let puzzle = null;
 let photoCanvas = document.createElement("canvas");
 
@@ -46,6 +62,21 @@ $("btnIniciar").addEventListener("click", iniciar);
 
 async function iniciar() {
   $("btnIniciar").disabled = true;
+
+  // 1) Cargar la librería de MediaPipe (import dinámico con manejo de error)
+  startMsg.textContent = "Cargando MediaPipe…";
+  try {
+    const mod = await import(MEDIAPIPE_URL);
+    HandLandmarker = mod.HandLandmarker;
+    FilesetResolver = mod.FilesetResolver;
+  } catch (e) {
+    startMsg.textContent = "⚠️ No se pudo cargar MediaPipe. Revisa tu conexión.";
+    $("btnIniciar").disabled = false;
+    return;
+  }
+  smoother = new Smoother(7);
+
+  // 2) Acceso a la cámara
   startMsg.textContent = "Pidiendo acceso a la cámara…";
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -60,16 +91,15 @@ async function iniciar() {
     return;
   }
 
-  startMsg.textContent = "Cargando modelo de manos…";
+  // 3) Crear el detector de manos (intenta GPU y cae a CPU si hace falta)
+  startMsg.textContent = "Preparando el detector…";
   try {
-    const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-    );
+    const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM);
     handLandmarker = await crearDetector(vision, "GPU").catch(() =>
       crearDetector(vision, "CPU")
     );
   } catch (e) {
-    startMsg.textContent = "⚠️ No se pudo cargar el modelo. Revisa tu conexión.";
+    startMsg.textContent = "⚠️ No se pudo iniciar el detector de manos.";
     $("btnIniciar").disabled = false;
     return;
   }
@@ -81,11 +111,7 @@ async function iniciar() {
 
 function crearDetector(vision, delegate) {
   return HandLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-      delegate,
-    },
+    baseOptions: { modelAssetPath: MODELO_MANOS, delegate },
     runningMode: "VIDEO",
     numHands: 1,
   });
@@ -129,7 +155,7 @@ function loop(now) {
 
   // Detección de manos (solo si el video avanzó)
   let stable = null;
-  if (handLandmarker && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+  if (smoother && handLandmarker && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
     const res = handLandmarker.detectForVideo(video, now);
     if (res.landmarks && res.landmarks.length) {
@@ -139,7 +165,7 @@ function loop(now) {
     }
     smoother.push(dedosVivos == null ? -1 : dedosVivos);
   }
-  stable = smoother.stable();
+  stable = smoother ? smoother.stable() : null;
 
   // Fondo
   ctx.fillStyle = "#15151a";
@@ -212,7 +238,7 @@ function estadoJuego(w, h) {
 // =============================================================================
 function cambiarEstado(nuevo) {
   state = nuevo;
-  smoother.clear();
+  if (smoother) smoother.clear();
   hud.classList.toggle("hidden", nuevo !== "JUEGO");
   // botones flotantes contextuales
   const mostrarAcc = nuevo === "DETECCION" || nuevo === "MENU";
