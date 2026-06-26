@@ -1,0 +1,97 @@
+:root {
+  --bg: #15151a;
+  --bg2: #26262e;
+  --txt: #f0f0f3;
+  --cyan: #00e6e6;
+  --blue: #3c8cf0;
+  --green: #3cb44b;
+  --red: #e0453c;
+  --gray: #5f5f5f;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app { position: relative; width: 100vw; height: 100dvh; display: flex; flex-direction: column; }
+
+/* ---------- Lienzo ---------- */
+#canvasWrap { flex: 1 1 auto; position: relative; min-height: 0; }
+#view { width: 100%; height: 100%; display: block; touch-action: none; }
+
+#cam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* ---------- Barra superior (HUD) ---------- */
+#hud {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--bg2);
+  border-bottom: 2px solid #000;
+  flex-wrap: wrap;
+}
+.hud-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.hud-dif { color: var(--cyan); font-weight: 700; font-size: clamp(14px, 2.4vw, 20px); }
+.hud-stats { display: flex; gap: 14px; font-size: clamp(12px, 2vw, 16px); color: #dcdcdc; }
+.hud-stats b { color: #fff; }
+
+.hud-progress { display: flex; align-items: center; gap: 8px; flex: 1 1 160px; min-width: 120px; }
+.hud-progress .bar { flex: 1; height: 16px; background: #4a4a4a; border-radius: 8px; overflow: hidden; }
+.hud-progress .fill { height: 100%; width: 0%; background: var(--cyan); transition: width .15s ease; }
+#hudPct { font-size: clamp(12px, 2vw, 15px); min-width: 38px; text-align: right; }
+
+.hud-right { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+
+/* ---------- Botones ---------- */
+.btn {
+  border: none; border-radius: 10px; padding: 9px 14px;
+  font-size: clamp(13px, 2vw, 15px); font-weight: 600; color: #fff;
+  background: #444; cursor: pointer; transition: transform .05s, filter .15s;
+  user-select: none;
+}
+.btn:hover { filter: brightness(1.12); }
+.btn:active { transform: scale(0.96); }
+.btn-primary { background: linear-gradient(135deg, #ff8a00, #ff5e62); }
+.btn-blue { background: var(--blue); }
+.btn-green { background: var(--green); }
+.btn-red { background: var(--red); }
+.btn-gray { background: var(--gray); }
+.btn-dark { background: #333; }
+.btn.active { box-shadow: 0 0 0 2px #fff inset; background: var(--green); }
+.btn-big { font-size: clamp(18px, 3vw, 22px); padding: 14px 30px; }
+.btn-dif { background: linear-gradient(135deg, #2a5298, #1e3c72); min-width: 130px; }
+
+/* ---------- Acciones flotantes ---------- */
+#actions {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 12px; z-index: 5;
+}
+#difBtns { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+/* ---------- Pantalla inicial / overlays ---------- */
+.overlay {
+  position: absolute; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 10, 14, 0.92); padding: 20px;
+}
+.card {
+  background: #1f1f27; border: 1px solid #34343f; border-radius: 18px;
+  padding: 28px 26px; max-width: 460px; text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.card h1 { font-size: clamp(22px, 5vw, 30px); margin-bottom: 12px; }
+.card p { color: #c4c4cf; line-height: 1.5; margin-bottom: 14px; }
+.pasos { text-align: left; margin: 0 0 20px; padding-left: 4px; list-style: none; }
+.pasos li { margin: 9px 0; line-height: 1.45; color: #d6d6df; }
+.msg { color: var(--cyan); min-height: 20px; margin-top: 12px; font-size: 14px; }
+
+.hidden { display: none !important; }

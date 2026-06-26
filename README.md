@@ -4,6 +4,11 @@ Juego de Vision Artificial que usa la webcam para tomar una foto activada por
 gestos y convertirla en un rompecabezas. Construido con OpenCV, MediaPipe Hands
 y NumPy.
 
+> **Tambien hay una version WEB** (navegador) en la carpeta [`web/`](web/),
+> lista para desplegar como sitio estatico en Vercel. La camara y los gestos
+> corren en el navegador del visitante (MediaPipe Tasks for Web + canvas), ideal
+> para abrir desde el celular escaneando un QR. Ver [`web/README.md`](web/README.md).
+
 ## Flujo del juego
 
 1. Deteccion: muestra la MANO ABIERTA (5 dedos) frente a la camara.
@@ -116,9 +121,15 @@ py -3.12 -m venv .venv
 ```
 FeriaING/
 ├── .venv/                   # Entorno virtual con Python 3.12 (no se sube a git)
-├── rompecabezas_gestos.py   # Codigo principal (modular)
+├── rompecabezas_gestos.py   # App de ESCRITORIO (OpenCV/MediaPipe/NumPy)
 ├── run.bat                  # Lanzador rapido (doble clic)
-├── requirements.txt         # Dependencias
+├── requirements.txt         # Dependencias de Python
+├── web/                     # Version WEB (HTML/JS/canvas) desplegable en Vercel
+│   ├── index.html
+│   ├── style.css
+│   ├── app.js
+│   ├── vercel.json
+│   └── README.md
 ├── .gitignore               # Ignora .venv y __pycache__
 └── README.md                # Este archivo
 ```

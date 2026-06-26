@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Rompecabezas por Gestos</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Pantalla inicial (pide permiso de camara con un gesto del usuario) -->
+    <div id="startScreen" class="overlay">
+      <div class="card">
+        <h1>🧩 Rompecabezas por Gestos</h1>
+        <p>Arma un rompecabezas con tu propia foto, controlando todo con la mano
+           frente a la cámara.</p>
+        <ol class="pasos">
+          <li>✋ Muestra la <b>mano abierta</b> para tomar la foto (3, 2, 1).</li>
+          <li>🖐️ Elige dificultad con los dedos: <b>1=Fácil 3×3</b>,
+              <b>2=Medio 4×4</b>, <b>3=Difícil 5×5</b>.</li>
+          <li>🧩 Intercambia piezas tocándolas para resolverlo.</li>
+        </ol>
+        <button id="btnIniciar" class="btn btn-primary btn-big">▶ Iniciar</button>
+        <p id="startMsg" class="msg"></p>
+      </div>
+    </div>
+
+    <!-- Barra superior (HUD) visible solo durante el juego -->
+    <header id="hud" class="hidden">
+      <div class="hud-left">
+        <span id="hudDif" class="hud-dif">MEDIO 4×4</span>
+        <span class="hud-stats">
+          <span>🔀 <b id="hudMov">0</b></span>
+          <span>⏱️ <b id="hudTime">0:00</b></span>
+          <span>💡 <b id="hudPistas">0</b></span>
+        </span>
+      </div>
+      <div class="hud-progress">
+        <div class="bar"><div id="hudBar" class="fill"></div></div>
+        <span id="hudPct">0%</span>
+      </div>
+      <div class="hud-right">
+        <button id="btnPista" class="btn btn-blue">💡 Pista</button>
+        <button id="btnVista" class="btn btn-gray">👁️ Vista</button>
+        <button id="btnReiniciar" class="btn btn-red">🔄 Reiniciar</button>
+        <button id="btnNuevaFoto" class="btn btn-dark">📷 Nueva foto</button>
+      </div>
+    </header>
+
+    <!-- Lienzo principal -->
+    <div id="canvasWrap">
+      <canvas id="view"></canvas>
+    </div>
+
+    <!-- Botones flotantes contextuales (captura / dificultad) -->
+    <div id="actions" class="hidden">
+      <button id="btnCapturar" class="btn btn-primary">📸 Tomar foto</button>
+      <div id="difBtns" class="hidden">
+        <button class="btn btn-dif" data-n="3">Fácil 3×3</button>
+        <button class="btn btn-dif" data-n="4">Medio 4×4</button>
+        <button class="btn btn-dif" data-n="5">Difícil 5×5</button>
+      </div>
+    </div>
+
+    <video id="cam" playsinline muted></video>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
