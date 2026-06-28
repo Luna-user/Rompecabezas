@@ -33,7 +33,8 @@ de titulo, se sale con ESC o Q.
 |--------------------------|---------------------------|
 | Tomar foto               | Mano abierta (5 dedos)    |
 | Elegir dificultad        | Boton FACIL / MEDIO / DIFICIL |
-| Seleccionar/Intercambiar | Clic en dos piezas        |
+| Mover piezas con la MANO | Apunta con el indice y PELLIZCA (junta pulgar e indice) sobre dos piezas |
+| Seleccionar/Intercambiar | Clic en dos piezas (mouse) |
 | Pista (max 3)            | Boton PISTA  o tecla H    |
 | Vista previa (1 solo uso)| Boton VISTA  o tecla P    |
 | Reiniciar la partida     | Boton REINICIAR o tecla R |
@@ -44,6 +45,11 @@ una flecha entre ambas. Esta LIMITADA a 3 usos (el boton muestra cuantas
 quedan). La VISTA muestra una miniatura de la foto original como referencia y es
 de UN SOLO uso (una vez que la ocultas, ya no se puede volver a mostrar). Al
 Reiniciar la partida, las ayudas se restablecen.
+
+Control por MANO (camara): durante el rompecabezas un cursor sigue tu dedo
+indice; al juntar el pulgar y el indice (PELLIZCO) actua como un clic, asi que
+pellizcas sobre una pieza y luego sobre otra para intercambiarlas. Una
+mini-camara (PiP) en la esquina te muestra tu mano. El mouse sigue funcionando.
 
 ## Como ejecutar
 

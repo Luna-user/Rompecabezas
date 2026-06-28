@@ -64,6 +64,11 @@ class Config:
     MAX_PISTAS = 3             # como máximo 3 pistas
     VISTA_UN_SOLO_USO = True   # la vista previa solo se puede usar una vez
 
+    # Control por GESTOS dentro del rompecabezas (mover piezas con la mano)
+    PINCH_RATIO = 0.55         # pellizco si dist(pulgar,indice) < RATIO * tam_mano
+    MANO_MARGEN = 0.13         # margen del encuadre que se mapea al tablero (0..0.5)
+    PINCH_ENFRIAMIENTO = 0.45  # segundos mínimos entre dos pellizcos
+
 
 # =============================================================================
 #  UTILIDADES DE PANTALLA (para que todo sea RESPONSIVE)
@@ -167,6 +172,12 @@ class DetectorManos:
     def hay_mano(self):
         """Devuelve True si se detectó al menos una mano en el último frame."""
         return bool(self.resultados and self.resultados.multi_hand_landmarks)
+
+    def landmarks_norm(self):
+        """Devuelve los 21 puntos (normalizados 0..1) de la primera mano, o None."""
+        if not self.hay_mano():
+            return None
+        return self.resultados.multi_hand_landmarks[0].landmark
 
     def dibujar(self, frame_bgr):
         """Dibuja el esqueleto de la mano detectada sobre el fotograma."""
@@ -363,6 +374,12 @@ class Rompecabezas:
         self.pista_par = None           # (origen, destino) a resaltar
         self.pista_hasta = 0.0          # instante hasta el que se ve la pista
         self.nombre_ventana = "Rompecabezas - resuelvelo!"
+
+        # Control por mano (cámara): cursor del dedo y estado del pellizco
+        self.cursor = None              # (x, y) del cursor de la mano, o None
+        self.mano_pinch = False         # ¿está pellizcando ahora?
+        self.mano_pinch_prev = False    # estado del pellizco en el frame anterior
+        self._t_pinch = 0.0             # último instante en que se pellizcó
 
     # ----- Sorteo de pestañas/huecos -----
     def _generar_bordes(self):
@@ -561,7 +578,70 @@ class Rompecabezas:
 
         # 7) Barra superior con estadísticas y botones
         self._dibujar_hud(canvas)
+
+        # 8) Cursor de la mano (si se está jugando por cámara)
+        if self.cursor is not None:
+            self._dibujar_cursor(canvas)
         return canvas
+
+    # ----- Control por mano (cámara) -----
+    def procesar_mano(self, detector):
+        """
+        Actualiza el cursor de la mano a partir de los landmarks y, cuando se
+        PELLIZCA (se juntan pulgar e índice), selecciona/mueve la pieza bajo el
+        cursor (un pellizco = un 'clic'). El frame ya viene en espejo (selfie).
+        """
+        lms = detector.landmarks_norm()
+        if not lms:
+            self.cursor = None
+            self.mano_pinch = False
+            self.mano_pinch_prev = False    # exige un pellizco nuevo al reaparecer
+            return
+
+        ix, iy = lms[8].x, lms[8].y          # punta del índice
+        tx, ty = lms[4].x, lms[4].y          # punta del pulgar
+        # Escala de la mano (muñeca -> nudillo del índice) para normalizar
+        tam = max(1e-3, np.hypot(lms[0].x - lms[5].x, lms[0].y - lms[5].y))
+        pinch = np.hypot(ix - tx, iy - ty) < Config.PINCH_RATIO * tam
+        self.mano_pinch = pinch
+
+        # Mapeo del dedo al tablero (con margen para alcanzar los bordes)
+        mg = Config.MANO_MARGEN
+        ux = min(1.0, max(0.0, (ix - mg) / (1 - 2 * mg)))
+        uy = min(1.0, max(0.0, (iy - mg) / (1 - 2 * mg)))
+        self.cursor = (int(self.off_x + ux * self.ancho),
+                       int(self.off_y + uy * self.alto))
+        col = min(self.n - 1, int(ux * self.n))
+        fila = min(self.n - 1, int(uy * self.n))
+
+        # Pellizco en el flanco de subida (con enfriamiento) -> acción en la celda
+        ahora = time.time()
+        if (pinch and not self.mano_pinch_prev
+                and ahora - self._t_pinch > Config.PINCH_ENFRIAMIENTO):
+            self._t_pinch = ahora
+            self.seleccionar_celda(fila * self.n + col)
+        self.mano_pinch_prev = pinch
+
+    def _dibujar_cursor(self, canvas):
+        """Dibuja el cursor de la mano (verde al pellizcar, cian al apuntar)."""
+        cx, cy = self.cursor
+        color = (0, 255, 0) if self.mano_pinch else (0, 255, 255)
+        r = max(12, int(24 * self.u))
+        cv2.circle(canvas, (cx, cy), r, color, max(2, int(3 * self.u)), cv2.LINE_AA)
+        cv2.circle(canvas, (cx, cy), max(3, int(5 * self.u)), color, -1, cv2.LINE_AA)
+
+    def _overlay_camara(self, canvas, frame):
+        """Muestra una mini-cámara (PiP) para que el jugador vea su mano."""
+        if frame is None:
+            return
+        pw = int(self.pantalla_w * 0.20)
+        ph = max(1, int(pw * frame.shape[0] / frame.shape[1]))
+        x0, y0 = 14, self.hud_h + 14
+        canvas[y0:y0 + ph, x0:x0 + pw] = cv2.resize(frame, (pw, ph))
+        cv2.rectangle(canvas, (x0, y0), (x0 + pw, y0 + ph), (255, 255, 255), 2)
+        cv2.putText(canvas, "Pellizca para tomar/soltar pieza",
+                    (x0, y0 + ph + int(24 * self.u)), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55 * self.u, (0, 255, 255), 1, cv2.LINE_AA)
 
     # ----- Tiempo -----
     @staticmethod
@@ -752,17 +832,26 @@ class Rompecabezas:
         fila = yb // self.alto_pieza
         if col < 0 or fila < 0 or col >= self.n or fila >= self.n:
             return
-        celda = fila * self.n + col
+        self.seleccionar_celda(fila * self.n + col)
 
-        if self.t_inicio is None:           # arranca el cronómetro al 1er clic
+    def seleccionar_celda(self, celda):
+        """
+        Acción sobre una celda (sirve para el mouse Y para la mano):
+        - 1ª selección: marca la pieza.
+        - 2ª selección distinta: intercambia las dos piezas.
+        - misma celda: deselecciona.
+        """
+        if self.resuelto:
+            return
+        if self.t_inicio is None:           # arranca el cronómetro a la 1ª acción
             self.t_inicio = time.time()
 
         if self.seleccionada is None:
-            self.seleccionada = celda        # primer clic: marcar
+            self.seleccionada = celda
         elif self.seleccionada == celda:
-            self.seleccionada = None         # clic en la misma: deseleccionar
+            self.seleccionada = None
         else:
-            a, b = self.seleccionada, celda  # segundo clic: intercambiar
+            a, b = self.seleccionada, celda
             self.orden[a], self.orden[b] = self.orden[b], self.orden[a]
             self.seleccionada = None
             self.movimientos += 1
@@ -820,20 +909,44 @@ class Rompecabezas:
         self._desordenar()
 
     # ----- Bucle del juego -----
-    def jugar(self):
-        """Abre la ventana del rompecabezas (PANTALLA COMPLETA) y gestiona el juego."""
+    def jugar(self, captura=None, detector=None):
+        """
+        Abre el rompecabezas en PANTALLA COMPLETA y gestiona el juego.
+
+        Si se pasan 'captura' (la cámara) y 'detector' (MediaPipe), se habilita
+        el CONTROL POR MANO: un cursor sigue el dedo índice y, al pellizcar
+        (juntar pulgar e índice), se toma/suelta una pieza. El mouse sigue
+        funcionando igual.
+        """
         preparar_ventana_pantalla_completa(self.nombre_ventana)
         cv2.setMouseCallback(self.nombre_ventana, self.on_mouse)
+        usar_mano = captura is not None and detector is not None
 
         print(f"\n[JUEGO] Dificultad {self.nombre} ({self.n}x{self.n} = "
               f"{self.n * self.n} piezas).")
-        print("[JUEGO] Clic en dos piezas para intercambiarlas.")
+        if usar_mano:
+            print("[JUEGO] Mueve la mano para apuntar y PELLIZCA para tomar/soltar.")
+        print("[JUEGO] Tambien puedes hacer clic en dos piezas con el mouse.")
         print("[JUEGO]  H = pista   P = vista previa   R = reiniciar   "
               "ESC/Q = salir")
 
         while True:
-            cv2.imshow(self.nombre_ventana, self.render())
-            tecla = cv2.waitKey(20) & 0xFF
+            frame_preview = None
+            if usar_mano:
+                ok, frame = captura.read()
+                if ok:
+                    frame = cv2.flip(frame, 1)        # espejo (control natural)
+                    detector.procesar(frame)
+                    self.procesar_mano(detector)
+                    detector.dibujar(frame)           # esqueleto de la mano en el PiP
+                    frame_preview = frame
+
+            canvas = self.render()
+            if usar_mano:
+                self._overlay_camara(canvas, frame_preview)
+            cv2.imshow(self.nombre_ventana, canvas)
+
+            tecla = cv2.waitKey(1 if usar_mano else 20) & 0xFF
             if tecla in (27, ord('q')):           # ESC o Q -> salir
                 break
             elif tecla == ord('r'):               # R -> reiniciar partida
@@ -1052,7 +1165,7 @@ def main():
                 print(f"[MENU] Dificultad elegida: {nombre} ({n}x{n}).")
                 cv2.destroyWindow(ventana_video)
                 puzzle = Rompecabezas(foto_congelada, n, nombre, pantalla)
-                puzzle.jugar()
+                puzzle.jugar(captura, detector)   # control por mano + mouse
 
                 # Al terminar, reiniciamos el flujo para una nueva partida
                 estado = ESTADO_DETECCION
@@ -1085,3 +1198,4 @@ def main():
 # =============================================================================
 if __name__ == "__main__":
     main()
+
